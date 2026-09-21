@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "durarun"
+version = "0.1.0"
+description = "Durable Execution for AI Agents — zero infrastructure, crash recovery, built-in observability."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+keywords = ["durable-execution", "crash-recovery", "wal", "ai-agent", "observability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+otel = [
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp>=1.20.0",
+]
+langgraph = ["langgraph-checkpoint>=2.0.0"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+all = ["durarun[otel,langgraph]"]
+
+[project.urls]
+Homepage = "https://github.com/Chao-superw/durarun"
+Repository = "https://github.com/Chao-superw/durarun"
+Issues = "https://github.com/Chao-superw/durarun/issues"
+Changelog = "https://github.com/Chao-superw/durarun/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["durarun*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
