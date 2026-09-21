@@ -1,38 +1,36 @@
 # durarun
 
-[English](#english) | [简体中文](#简体中文)
+**Durable execution for AI agent workflows. Just `pip install`, no containers, no server.**
 
-## English
+[![PyPI](https://img.shields.io/pypi/v/durarun)](https://pypi.org/project/durarun/)
+[![Python](https://img.shields.io/pypi/pyversions/durarun)](https://pypi.org/project/durarun/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/Chao-superw/durarun/actions/workflows/ci.yml/badge.svg)](https://github.com/Chao-superw/durarun/actions)
 
-A Python library for durable execution in AI agent workflows.
+durarun persists every step result to a Write-Ahead Log as your workflow runs. If the process crashes, call `run()` again: completed steps load from the WAL and execution resumes where it stopped.
 
-durarun persists every step result to a Write-Ahead Log (WAL) as your workflow runs. If the process crashes, call `run()` again: completed steps load from the WAL and execution picks up where it stopped. You don't need containers or a separate server; it works as a plain `pip install` library.
+<p align="center">
+  <img src="docs/recovery-flow.svg" alt="durarun recovery flow" width="720">
+</p>
 
-### What it does
+## Why durarun?
 
-- Persists step results to a WAL so they survive process crashes. Resuming a failed run replays from disk instead of re-executing.
-- `@step` decorator with per-step `retry` and `timeout`, accepting readable durations like `"30s"` or `"2m"`.
-- Two WAL backends included: `SqliteWAL` for production, `MemoryWAL` for tests.
-- `arun()` for asyncio workflows.
-- Optional OpenTelemetry tracing, lazy-loaded. If the SDK isn't installed, nothing happens.
-- LangGraph `BaseCheckpointSaver` implementation included.
-- Full type annotations with `py.typed` marker.
+AI agent workflows call LLMs, tools, and APIs in multi-step sequences that can take minutes. A crash at step 9 of 10 means re-running everything, including all those API calls. durarun checkpoints each step result, so recovery skips what already succeeded.
 
-### Installation
+| | durarun | Temporal | DBOS | Inngest |
+|---|---|---|---|---|
+| Install | `pip install` | Cluster + SDK | Cloud service | Cloud service |
+| Infra needed | None (SQLite file) | Temporal server | Postgres + cloud | Event bus + cloud |
+| Code change | `@step` decorator | Activity/Workflow classes | Decorator + config | Step functions |
+| Async support | Native `arun()` | Via async activity | Limited | N/A (HTTP) |
+| LangGraph integration | Built-in checkpointer | Manual | Manual | Manual |
+| Best for | Python AI agents | Microservice orchestration | Transactional apps | Event-driven workflows |
+
+## Quick start
 
 ```bash
 pip install durarun
 ```
-
-With optional extras:
-
-```bash
-pip install durarun[otel]        # OpenTelemetry tracing
-pip install durarun[langgraph]   # LangGraph checkpointer
-pip install durarun[all]         # everything
-```
-
-### Quick start
 
 ```python
 from durarun import DurableRunner
@@ -60,7 +58,17 @@ print(result.recovered_steps)  # 0 on first run; >0 after crash recovery
 
 If this process crashes after `fetch_data` completes, running it again with the same database will skip `fetch_data` (loaded from WAL) and continue from `process`.
 
-### Crash recovery
+## Features
+
+- Step results persist to a WAL on disk and survive process restarts.
+- `@step` decorator with per-step `retry` and `timeout`, accepting readable durations like `"30s"` or `"2m"`.
+- Two WAL backends included: `SqliteWAL` for production, `MemoryWAL` for tests. You can also implement `WALBackend` for your own.
+- `arun()` for asyncio workflows.
+- Optional OpenTelemetry tracing, lazy-loaded. If the SDK isn't installed, nothing happens.
+- LangGraph `BaseCheckpointSaver` implementation included.
+- Full type annotations with `py.typed` marker.
+
+## Crash recovery
 
 ```python
 # Resume the most recent incomplete run
@@ -78,15 +86,9 @@ runner = DurableRunner(
 result = runner.run([fetch_data, process, save_result])
 ```
 
-### Async
+## Context
 
-```python
-result = await runner.arun([fetch_data, process, save_result])
-```
-
-### Context
-
-Steps receive a `Context` object as their first argument. Use it to read earlier step results or pass custom data between steps:
+Steps receive a `Context` object. Use it to read earlier step results or pass custom data:
 
 ```python
 @runner.step
@@ -96,12 +98,12 @@ def step_a(ctx):
 
 @runner.step
 def step_b(ctx):
-    prev = ctx.get("step_a")           # "hello", result of step_a
+    prev = ctx.get("step_a")           # "hello"
     custom = ctx.get_custom("my_key")   # 42
     return f"{prev} world ({custom})"
 ```
 
-### Observability
+## Observability
 
 ```python
 # Stdout tracing (default, no extra dependencies)
@@ -114,7 +116,7 @@ runner = DurableRunner(
 )
 ```
 
-After a run you can inspect the timeline:
+After a run, inspect the timeline:
 
 ```python
 result = runner.run(steps)
@@ -122,14 +124,14 @@ for event in result.timeline:
     print(event)  # {"step": "fetch_data", "duration_ms": 12.3, "source": "live", ...}
 ```
 
-### WAL backends
+## WAL backends
 
 | Backend | URI | Use case |
 |---------|-----|----------|
 | `SqliteWAL` | `sqlite://./path.db` | Production, durable and crash-safe |
 | `MemoryWAL` | `memory://` | Tests, fast and ephemeral |
 
-You can write your own backend by implementing the `WALBackend` protocol:
+Custom backend:
 
 ```python
 from durarun import WALBackend
@@ -142,7 +144,7 @@ class MyBackend:
     def fsync(self): ...
 ```
 
-### LangGraph integration
+## LangGraph integration
 
 ```python
 from durarun.integrations.langgraph import DurarunCheckpointer
@@ -151,13 +153,24 @@ checkpointer = DurarunCheckpointer(db_path="./langgraph.db")
 # Pass to your LangGraph graph as the checkpoint_saver
 ```
 
+## Installation extras
+
+```bash
+pip install durarun[otel]        # OpenTelemetry tracing
+pip install durarun[langgraph]   # LangGraph checkpointer
+pip install durarun[all]         # everything
+```
+
 ---
+
+<details>
+<summary><b>简体中文</b></summary>
 
 ## 简体中文
 
-一个给 AI Agent 工作流加上持久化执行能力的 Python 库。
+一个给 AI Agent 工作流加上持久化执行能力的 Python 库。`pip install` 即可使用，不需要容器或额外服务。
 
-durarun 在工作流运行过程中，把每个 step 的结果写入 Write-Ahead Log (WAL)。如果进程中途崩溃，再次调用 `run()` 就行：已完成的 step 从 WAL 读取，执行从断点继续。不需要容器，也不需要额外的服务，`pip install` 即可使用。
+durarun 在工作流运行过程中，把每个 step 的结果写入 Write-Ahead Log (WAL)。如果进程中途崩溃，再次调用 `run()` 就行：已完成的 step 从 WAL 读取，执行从断点继续。
 
 ### 功能
 
@@ -301,6 +314,8 @@ from durarun.integrations.langgraph import DurarunCheckpointer
 checkpointer = DurarunCheckpointer(db_path="./langgraph.db")
 # 作为 checkpoint_saver 传给你的 LangGraph graph
 ```
+
+</details>
 
 ## License
 
