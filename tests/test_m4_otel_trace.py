@@ -1,13 +1,16 @@
-"""M4: 零配置 OTEL span
+"""M4: OTEL tracing
 
 Test that OpenTelemetry traces are produced when running steps.
-The default configuration uses StdoutSpanExporter which prints [TRACE] lines.
-We also verify the DurarunTracer attributes are set correctly.
+When opentelemetry is not installed, these tests are skipped.
 """
 
 import io
 import sys
 import time
+
+import pytest
+
+otel = pytest.importorskip("opentelemetry", reason="opentelemetry not installed")
 
 from durarun import DurableRunner, DurarunTracer
 
@@ -21,9 +24,7 @@ def _capture_stdout(runner, steps):
         result = runner.run(steps)
     finally:
         sys.stdout = old_stdout
-    # Give the BatchSpanProcessor a moment to flush
     time.sleep(0.5)
-    # Force flush once more with stdout captured
     old_stdout2 = sys.stdout
     sys.stdout = buf
     try:
@@ -52,7 +53,6 @@ def test_otel_trace_output(tmp_db):
 
     result, output = _capture_stdout(runner, [analyze, summarize, finalize])
 
-    # Verify trace output contains expected patterns
     assert "[TRACE]" in output, f"No [TRACE] in output: {output!r}"
     assert "durarun.step.analyze" in output
     assert "durarun.step.summarize" in output
@@ -66,16 +66,13 @@ def test_tracer_attributes_set():
     """DurarunTracer should properly store run_id and create spans."""
     tracer = DurarunTracer()
 
-    # start_run_span stores run_id
     span = tracer.start_run_span("test-run-123", steps_total=3)
     assert tracer._run_id == "test-run-123"
     assert tracer._run_span is not None
 
-    # record_step should not raise
     tracer.record_step("step_a", duration_ms=100.0, source="live", retry_count=0)
     tracer.record_step("step_b", duration_ms=50.0, source="wal", retry_count=0)
 
-    # finish_run clears state
     tracer.finish_run(recovered_steps=1)
     assert tracer._run_span is None
     assert tracer._run_id is None
@@ -90,7 +87,6 @@ def test_tracer_context_manager():
         tracer.record_step("s1", 10.0, "live")
         tracer.record_step("s2", 20.0, "wal")
 
-    # After exiting the context manager, state should be cleaned up
     assert tracer._run_span is None
 
 
@@ -98,7 +94,6 @@ def test_otel_trace_recovery_shows_source(tmp_db):
     """Recovered steps should show source=wal in trace output."""
     run_id = "trace-recovery-run"
 
-    # Phase 1: run 2 steps
     runner1 = DurableRunner(backend="sqlite://" + tmp_db, run_id=run_id)
 
     @runner1.step
@@ -111,7 +106,6 @@ def test_otel_trace_recovery_shows_source(tmp_db):
 
     runner1.run([first, second])
 
-    # Phase 2: recover + 1 new step
     runner2 = DurableRunner(backend="sqlite://" + tmp_db, run_id=run_id)
 
     @runner2.step
@@ -128,7 +122,6 @@ def test_otel_trace_recovery_shows_source(tmp_db):
 
     result, output = _capture_stdout(runner2, [first, second, third])
 
-    # Should show both wal and live sources
     assert "source=wal" in output
     assert "source=live" in output
     assert result.recovered_steps == 2
